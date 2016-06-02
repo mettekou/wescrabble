@@ -1,0 +1,84 @@
+import /.at.lang.futures;
+
+import /.weScrabble.localInterface;
+import /.weScrabble.remoteInterface;
+
+enableFutures(false);
+
+def slothTimeout := seconds(10);
+
+deftype WeScrabble;
+
+def makeWeScrabble() {
+	object: {
+		def jWeScrabble;
+		def myId;
+		def myTeam;
+		
+		def players := [];
+		def teams := [];
+		def teammates := [];
+		def racks := [];
+
+		def local := localInterface.new(self);
+		def remote := remoteInterface.new(self);
+			
+		export: remote as: WeScrabble;
+		
+		whenever: WeScrabble discovered: { |reference|
+
+			when: reference <-getIdAndTeam()@FutureMessage becomes: { |playerInfo|
+				def [id, team] := playerInfo;
+				
+				def newUser := (id != myId).and: {
+					(players.filter: { |existingPlayer|
+						def [existingId, reference, team] := existingPlayer;
+						existingId == id
+					}).isEmpty
+				};
+				
+				// We make sure to register new users in our bookkeeping tables.
+				if: newUser
+				then: {
+					players := players + [[id, reference, team]];
+
+					if: team == myTeam then: {
+						teammates := teammates + [[id, reference]];
+						racks := racks + [id, false];
+					};
+					
+					if: teams.contains(team).not then: {
+						teams := teams + [team];
+						jWeScrabble.notifyTeamCreated(team, id);
+					} else: {
+						jWeScrabble.notifyPlayerJoined(id, team);
+					}
+				};
+				
+				// We listen for the disconnection of the newly discovered player
+				// to notify Java of it.
+				whenever: reference disconnected: {
+					jWeScrabble.notifyPlayerDisconnected(id);
+				};
+				
+				// We also listen for the reconnection of the newly discovered player.
+				whenever: reference reconnected: {
+					jWeScrabble.notifyPlayerReconnected(id);
+				};
+			};
+		};
+		
+		// Although punishing the local player for not forming a word
+		// is not a part of distributed communication, it is less complex
+		// in AmbientTalk. We therefore implement it here.
+		/.at.support.timer.whenever: slothTimeout elapsed: {
+			if: myTeam != nil then: { jWeScrabble.punishForSloth(); }
+		};
+		
+		// We perform the Java-AmbientTalk handshake here.
+		jWeScrabble := Android.parent.registerATApp(local);
+	};
+};
+
+system.println("weScrabble started");
+self;

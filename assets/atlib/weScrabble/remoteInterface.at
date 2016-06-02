@@ -1,0 +1,57 @@
+object:{
+	def remoteInterface := object: {
+		def parent;
+		
+		def init(theParent){
+			parent := theParent;
+		};
+		
+		def getIdAndTeam(){
+			[parent.myId, parent.myTeam];
+		};
+		
+		def getLettersInRack(player) {
+			parent.jWeScrabble.getLettersInRack(player);
+		};
+		
+		def requestDonation(player, letter) {
+			parent.jWeScrabble.requestDonation(player, letter);
+		};
+		
+		def notifyTeammatesLettersArrived(lettersByTeammate) {
+			parent.jWeScrabble.notifyTeammatesLettersArrived(lettersByTeammate);
+		};
+		
+		def notifyDonationAccepted(letter, donator) {
+			parent.jWeScrabble.notifyDonationAccepted(letter, donator);
+		};
+		
+		def notifyDonationDenied(letter, refuser) {
+			parent.jWeScrabble.notifyDonationDenied(letter, refuser);
+		};
+		
+		def notifyTeamCreated(team, firstPlayer) {
+			parent.jWeScrabble.notifyTeamCreated(team, firstPlayer);
+		};
+		
+		def notifyPlayerJoined(player, team) {
+			parent.jWeScrabble.notifyPlayerJoined(player, team);
+		};
+
+		def notifyGameOver(winningTeam) {
+			parent.jWeScrabble.notifyGameOver(winningTeam);
+		};
+		
+		def punishForOpponentForming(team, letter) {
+			parent.jWeScrabble.punishForOpponentForming(team, letter);
+		};
+		
+		def emptyRack(player) {
+			parent.racks.put(player, true);
+		};
+		
+		def nonEmptyRack(player) {
+			parent.racks.put(player, false);
+		};
+	};
+}

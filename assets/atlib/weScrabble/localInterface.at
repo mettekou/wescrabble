@@ -1,0 +1,135 @@
+import /.at.lang.futures;
+
+import /.weScrabble.dictionary;
+
+enableFutures(false);
+
+object: {
+	def localInterface := object: {
+		def parent;
+
+		def init(theParent) {
+			parent := theParent;
+		};
+		
+		def setId(id){
+			parent.myId := id;
+		};
+		
+		def setTeam(team){
+			parent.myTeam := team;
+			parent.teams := parent.teams + [team];
+			network.online();
+		};
+		
+		def validateWord(wordFormed){
+			def validWord := /.weScrabble.dictionary.findWord: wordFormed;
+			
+			if: validWord then: {
+				def letters := wordFormed.explode();
+				def halfLetters := letters.select(1, (letters.length() / 2).round);
+				def otherTeams := parent.players.filter: {|el| 
+					def [id, ref, team] := el;
+					team != parent.myTeam;
+				 };
+				
+				if: otherTeams.length() > 0
+				then: {
+					def current := 1;
+					halfLetters.each: {|letter|
+						if: current >= otherTeams.length() then: {
+							current := 1;
+						};
+						def [id, ref, team] := otherTeams[current];
+						ref <- punishForOpponentForming(team, letter);
+						
+						current := current + 1;
+					};
+				};
+				
+				parent.jWeScrabble.notifyWordValidated(wordFormed);
+			}
+			else: {
+				parent.jWeScrabble.notifyWordInvalidated(wordFormed);
+			};
+		
+		};
+
+		def requestLetter(receiver, letter) {
+			parent.teammates[parent.teammates.find: {|teammate| teammate[1] == receiver}][2] <- requestDonation(parent.myId, letter);
+		};
+		
+		def donateLetter(receiver, letter) {
+			parent.teammates[parent.teammates.find: {|teammate| teammate[1] == receiver}][2] <- notifyDonationAccepted(letter, parent.myId);
+		};
+		
+		def refuseToDonateLetter(receiver, letter) {
+			parent.teammates[parent.teammates.find: {|teammate| teammate[1] == receiver}][2] <- notifyDonationDenied(letter, parent.myId);
+		};
+		
+		def emptyRack() {
+			parent.racks := parent.racks.map: {|entry|
+				def [id, empty] := entry;
+				if: id == parent.myId then: { [id, true] } else: { entry };
+			};
+			def nonEmptyRacks := parent.racks.filter: {|entry|
+				def [id, empty] := entry;
+				entry == false;
+			};
+			if: nonEmptyRacks.isEmpty() then: {
+				def msg := <- notifyGameOver(parent.myTeam);
+				parent.players.each: {|u| 
+					def [id, ref, team] := u;
+					ref <+ msg;
+				};
+				parent.jWeScrabble.notifyGameOver(parent.myTeam);
+			} else: {
+				def msg := <- emptyRack(parent.myId);
+				parent.teammates.each: {|u| 
+					def [id, ref] := u;
+					ref <+ msg;
+				};
+			}
+		};
+		
+		def nonEmptyRack(){
+			parent.racks := parent.racks.map: {|entry|
+				def [id, empty] := entry;
+				if: id == parent.myId then: { [id, false] } else: { entry };
+			};
+			
+			def msg := <- nonEmptyRack(parent.myId);
+			parent.teammates.each: {|u| 
+				def [id, reference] := u;
+				reference <+ msg;
+			};
+		};
+
+		def collectLettersFromTeammates() {
+			def loop(references, lettersByTeammates) {
+				if: references.length() == 0
+				then: {
+					parent.jWeScrabble.notifyTeammatesLettersArrived(lettersByTeammates);
+				};
+				
+				if: references.length() == 1
+				then: {
+					def [id, reference] := references[1];
+					when: reference <- getLettersInRack(parent.myId)@FutureMessage becomes: { |letters|
+						lettersByTeammates.put(id, letters);
+						parent.jWeScrabble.notifyTeammatesLettersArrived(lettersByTeammates);
+					};
+				}
+				else: {
+					def [id, reference] := references[1];
+					when: reference <- getLettersInRack(parent.myId)@FutureMessage becomes: { |letters|
+						lettersByTeammates.put(id, letters);
+						loop(references.select(2, references.length()));
+					};
+				};
+			};
+			
+			loop(parent.teammates, jlobby.java.util.HashMap.new());
+		};
+	};
+};
