@@ -23,16 +23,14 @@ object: {
 		};
 		
 		def validateWord(wordFormed){
-			def validWord := /.weScrabble.dictionary.findWord: wordFormed;
-			
-			if: validWord then: {
+			if: (/.weScrabble.dictionary.findWord: wordFormed) then: {
 				def letters := wordFormed.explode();
 				def halfLetters := letters.select(1, (letters.length() / 2).round);
-				def otherTeams := parent.players.filter: {|el| 
-					def [id, ref, team] := el;
+				def otherTeams := parent.players.filter: {|player| 
+					def [id, reference, team] := player;
 					team != parent.myTeam;
 				 };
-				
+				// Distribute half of the letters of the formed word one at a time.
 				if: otherTeams.length() > 0
 				then: {
 					def current := 1;
@@ -40,8 +38,8 @@ object: {
 						if: current >= otherTeams.length() then: {
 							current := 1;
 						};
-						def [id, ref, team] := otherTeams[current];
-						ref <- punishForOpponentForming(team, letter);
+						def [id, reference, team] := otherTeams[current];
+						reference <- punishForOpponentForming(team, letter);
 						
 						current := current + 1;
 					};
@@ -68,26 +66,27 @@ object: {
 		};
 		
 		def emptyRack() {
-			parent.racks := parent.racks.map: {|entry|
-				def [id, empty] := entry;
+			parent.racks := parent.racks.map: {|rack|
+				def [id, empty] := rack;
 				if: id == parent.myId then: { [id, true] } else: { entry };
 			};
+			
 			def nonEmptyRacks := parent.racks.filter: {|entry|
 				def [id, empty] := entry;
 				entry == false;
 			};
 			if: nonEmptyRacks.isEmpty() then: {
-				def msg := <- notifyGameOver(parent.myTeam);
-				parent.players.each: {|u| 
-					def [id, ref, team] := u;
-					ref <+ msg;
+				def message := <- notifyGameOver(parent.myTeam);
+				parent.players.each: {|entry| 
+					def [id, reference, team] := entry;
+					reference <+ message;
 				};
 				parent.jWeScrabble.notifyGameOver(parent.myTeam);
 			} else: {
-				def msg := <- emptyRack(parent.myId);
-				parent.teammates.each: {|u| 
-					def [id, ref] := u;
-					ref <+ msg;
+				def message := <- emptyRack(parent.myId);
+				parent.teammates.each: {|entry| 
+					def [id, reference] := entry;
+					reference <+ message;
 				};
 			}
 		};
@@ -98,10 +97,10 @@ object: {
 				if: id == parent.myId then: { [id, false] } else: { entry };
 			};
 			
-			def msg := <- nonEmptyRack(parent.myId);
+			def message := <- nonEmptyRack(parent.myId);
 			parent.teammates.each: {|u| 
 				def [id, reference] := u;
-				reference <+ msg;
+				reference <+ message;
 			};
 		};
 
@@ -110,22 +109,22 @@ object: {
 				if: references.length() == 0
 				then: {
 					parent.jWeScrabble.notifyTeammatesLettersArrived(lettersByTeammates);
-				};
-				
-				if: references.length() == 1
-				then: {
+				} else: {
 					def [id, reference] := references[1];
+					// We need @Due here to handle failure, but it does not work properly.
+					// Because we were only notified of this issue a week before the deadline,
+					// we were unable to resolve it.
 					when: reference <- getLettersInRack(parent.myId)@FutureMessage becomes: { |letters|
-						lettersByTeammates.put(id, letters);
-						parent.jWeScrabble.notifyTeammatesLettersArrived(lettersByTeammates);
+						if: references.length() == 1 then: {
+							lettersByTeammates.put(id, letters);
+							parent.jWeScrabble.notifyTeammatesLettersArrived(lettersByTeammates);
+						} else: {
+							lettersByTeammates.put(id, letters);
+							loop(references.select(2, references.length()));
+						};
 					};
-				}
-				else: {
-					def [id, reference] := references[1];
-					when: reference <- getLettersInRack(parent.myId)@FutureMessage becomes: { |letters|
-						lettersByTeammates.put(id, letters);
-						loop(references.select(2, references.length()));
-					};
+					// A catch: TimeoutException using: clause should follow here, continuing
+					// without the letters from the current teammate.
 				};
 			};
 			
